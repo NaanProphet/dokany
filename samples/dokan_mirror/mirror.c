@@ -82,6 +82,7 @@ static WCHAR RootDirectory[DOKAN_MAX_PATH] = L"C:";
 static WCHAR MountPoint[DOKAN_MAX_PATH] = L"M:\\";
 static WCHAR UNCName[DOKAN_MAX_PATH] = L"";
 static WCHAR VolumeName[MAX_PATH + 1] = L"DOKAN";
+static DWORD VolumeSerial = 0x19831116; // default; overridden by /serial
 
 static void GetFilePath(PWCHAR filePath, ULONG numberOfElements,
                         LPCWSTR FileName) {
@@ -1334,7 +1335,7 @@ static NTSTATUS DOKAN_CALLBACK MirrorGetVolumeInformation(
   wcscpy_s(VolumeNameBuffer, VolumeNameSize, VolumeName);
 
   if (VolumeSerialNumber)
-    *VolumeSerialNumber = 0x19831116;
+    *VolumeSerialNumber = VolumeSerial;
   if (MaximumComponentLength)
     *MaximumComponentLength = 255;
   if (FileSystemFlags) {
@@ -1548,6 +1549,7 @@ void ShowUsage() {
           "  /z Enabled FCB GCt\t\t\t\t Might speed up on env with filter drivers (Anti-virus) slowing down the system.\n"
           "  /x Network unmount\t\t\t\t Allows unmounting network drive from file explorer.\n"
           "  /e Enable Driver Logs\t\t\t\t Forward Driver logs to userland.\n"
+          "  /serial VolumeSerial (ex. /serial 1A2B3C4D)\t Volume serial number in hex (default 19831116).\n"
           "  /v Volume name\t\t\t\t Personalize the volume name.\n\n"
           "Examples:\n"
           "\tmirror.exe /r C:\\Users /l M:\t\t\t# Mirror C:\\Users as RootDirectory into a drive of letter M:\\.\n"
@@ -1585,6 +1587,12 @@ int __cdecl wmain(ULONG argc, PWCHAR argv[]) {
   dokanOptions.ThreadCount = 0; // use default
 
   for (command = 1; command < argc; command++) {
+    if (_wcsicmp(argv[command], L"/serial") == 0) {
+      CHECK_CMD_ARG(command, argc)
+      VolumeSerial = (DWORD)wcstoul(argv[command], NULL, 16);
+      DbgPrint(L"Volume Serial: %08X\n", VolumeSerial);
+      continue;
+    }
     switch (towlower(argv[command][1])) {
     case L'r':
       CHECK_CMD_ARG(command, argc)
