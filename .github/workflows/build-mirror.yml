@@ -1,0 +1,62 @@
+name: Build mirror-1.5.1-serial.exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [1.5.1.1000-volume_serial]
+    paths:
+      - samples/dokan_mirror/mirror.c
+      - .github/workflows/build-mirror.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Dokany 1.5.1 x64 Release libraries
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/dokan-dev/dokany/releases/download/v1.5.1.1000/dokan.zip -OutFile dokan.zip
+          Expand-Archive dokan.zip -DestinationPath dokan_release
+          Get-ChildItem dokan_release -Recurse -Include dokan1.lib, dokan1.dll | ForEach-Object { Write-Host $_.FullName }
+          $pick = { param($name) Get-ChildItem dokan_release -Recurse -Filter $name |
+                      Where-Object { $_.FullName -match '\\x64\\' -and $_.FullName -match '\\Release\\' } |
+                      Select-Object -First 1 }
+          $lib = & $pick 'dokan1.lib'
+          $dll = & $pick 'dokan1.dll'
+          if (-not $lib) { throw "x64 Release dokan1.lib not found in dokan.zip (paths listed above)" }
+          if (-not $dll) { throw "x64 Release dokan1.dll not found in dokan.zip (paths listed above)" }
+          "DOKAN_LIB=$($lib.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "DOKAN_DLL=$($dll.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build (x64, Release)
+        shell: pwsh
+        working-directory: samples/dokan_mirror
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
+                  -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          cl /nologo /O2 /MT /W3 /DUNICODE /D_UNICODE mirror.c /Fe:mirror-1.5.1-serial.exe /link $env:DOKAN_LIB advapi32.lib user32.lib
+          if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
+
+      - name: Check the usage text lists /serial
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory smoke | Out-Null
+          Copy-Item samples/dokan_mirror/mirror-1.5.1-serial.exe, $env:DOKAN_DLL smoke/
+          $usage = (& ./smoke/mirror-1.5.1-serial.exe 2>&1) | Out-String
+          Write-Host $usage
+          if ($usage -notmatch '/serial') { throw "usage text does not mention /serial" }
+          # Showing usage exits with code 1 by design; don't let that fail the step.
+          $global:LASTEXITCODE = 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mirror-1.5.1-serial-x64-release
+          path: samples/dokan_mirror/mirror-1.5.1-serial.exe
+          if-no-files-found: error
