@@ -41,7 +41,9 @@ jobs:
                   -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          cl /nologo /O2 /MT /W3 /DUNICODE /D_UNICODE mirror.c /Fe:mirror-1.5.1-serial.exe /link $env:DOKAN_LIB advapi32.lib user32.lib
+          # Flags mirror dokan_mirror.vcxproj's Release|x64 settings (include ../../sys for public.h, link ntdll).
+          cl /nologo /O2 /Oi /Gy /MT /W3 /I ..\..\sys /DWIN32 /DNDEBUG /D_CONSOLE /DUNICODE /D_UNICODE mirror.c `
+             /Fe:mirror-1.5.1-serial.exe /link /OPT:REF /OPT:ICF $env:DOKAN_LIB ntdll.lib advapi32.lib user32.lib
           if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
 
       - name: Check the usage text lists /serial
